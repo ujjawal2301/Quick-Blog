@@ -85,7 +85,7 @@ export const loginUser = wrapAsync(async(req, res) => {
 
     // validate input
     if(!email || !password){
-        return res.staatus(400).json({
+        return res.status(400).json({
             success: false,
             message: "Email and password are required"
         });
@@ -137,7 +137,5 @@ export const loginUser = wrapAsync(async(req, res) => {
             role: user.role
         }
     });
-
-
 
 });

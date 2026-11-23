@@ -1,8 +1,9 @@
 import Blog from "../models/Blog.js";
+import Comment from "../models/Comment.js";
 import cloudinary from "../configs/cloudinary.js";
 import { Readable } from "stream";
-import Comment from "../models/Comment.js";
 import main from "../configs/gemini.js";
+import wrapAsync from "../utils/wrapAsync.js";
 
 export const addBlog = async (req, res) => {
     try {
@@ -27,7 +28,7 @@ export const addBlog = async (req, res) => {
 
         const image = result.secure_url;
 
-        await Blog.create({ title, subTitle, description, category, image, isPublished })
+        await Blog.create({ title, subTitle, description, category, image, isPublished, author: req.isAdmin ? null : req.user._id })
         res.json({ success: true, message: "Blog added Successfully" })
 
     } catch (error) {
@@ -57,19 +58,32 @@ export const getBlogById = async (req, res) => {
     }
 }
 
-export const deleteBlogById = async (req, res) => {
-    try {
-        const { id } = req.body;
-        await Blog.findByIdAndDelete(id);
-
-        // Delete all comments associated with this blog
-        await Comment.deleteMany({blog: id});
-
-        res.json({ success: true, message: "Blog deleted succesfully" });
-    } catch (error) {
-        res.json({ success: false, message: error.message })
+export const deleteBlogById = wrapAsync(async (req, res) => {
+    const { id } = req.body;
+    const blog = await BlogFindById(id);
+    if (!blog) {
+        return res.status(404).json({
+            success: false,
+            message: "Blog not found"
+        });
     }
-}
+
+    if (!req.isAdmin && blog.author?.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+            success: false,
+            message: "You are not authorized to delete this blog"
+        });
+    }
+
+    await Blog.findByIdAndDelete(id);
+    await Comment.deleteMany({ blog: id });
+
+    res.json({
+        success: true,
+        message: "Blog deleted successfully"
+    });
+});
+
 
 export const togglePublish = async (req, res) => {
     try {
@@ -85,30 +99,30 @@ export const togglePublish = async (req, res) => {
 
 export const addComment = async (req, res) => {
     try {
-        const{blog,name,content} = req.body;
-        await Comment.create({blog,name,content});
-        res.json({success: true, message: 'comment added for review'})
+        const { blog, name, content } = req.body;
+        await Comment.create({ blog, name, content });
+        res.json({ success: true, message: 'comment added for review' })
     } catch (error) {
-         res.json({ success: false, message: error.message })
-    }
-} 
-
-export const getBlogComments = async(req,res) => {
-    try {
-         const{blogId} = req.body;
-         const comments = await Comment.find({blog: blogId, isApproved: true }). sort({createdAt: -1});
-         res.json({success: true, comments});
-    } catch (error) {
-      res.json({ success: false, message: error.message })   
+        res.json({ success: false, message: error.message })
     }
 }
 
-export const generateContent = async(req,res) => {
+export const getBlogComments = async (req, res) => {
     try {
-        const {prompt} = req.body;
-        const content = await main(prompt + ' Generate a blog content for this topic in simple text format')
-        res.json({success: true, content});
+        const { blogId } = req.body;
+        const comments = await Comment.find({ blog: blogId, isApproved: true }).sort({ createdAt: -1 });
+        res.json({ success: true, comments });
     } catch (error) {
-           res.json({success: false, message: error.message});
+        res.json({ success: false, message: error.message })
+    }
+}
+
+export const generateContent = async (req, res) => {
+    try {
+        const { prompt } = req.body;
+        const content = await main(prompt + ' Generate a blog content for this topic in simple text format')
+        res.json({ success: true, content });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
     }
 }
