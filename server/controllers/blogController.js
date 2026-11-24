@@ -4,6 +4,7 @@ import cloudinary from "../configs/cloudinary.js";
 import { Readable } from "stream";
 import main from "../configs/gemini.js";
 import wrapAsync from "../utils/wrapAsync.js";
+// import { wrap } from "module";
 
 export const addBlog = async (req, res) => {
     try {
@@ -60,7 +61,7 @@ export const getBlogById = async (req, res) => {
 
 export const deleteBlogById = wrapAsync(async (req, res) => {
     const { id } = req.body;
-    const blog = await BlogFindById(id);
+    const blog = await Blog.findById(id);
     if (!blog) {
         return res.status(404).json({
             success: false,
@@ -85,17 +86,34 @@ export const deleteBlogById = wrapAsync(async (req, res) => {
 });
 
 
-export const togglePublish = async (req, res) => {
-    try {
-        const { id } = req.body;
-        const blog = await Blog.findById(id);
-        blog.isPublished = !blog.isPublished;
-        await blog.save();
-        res.json({ success: true, message: "Blog status updated" });
-    } catch (error) {
-        res.json({ success: false, message: error.message })
+export const togglePublish = wrapAsync(async (req, res) => {
+    const {id} = req.body;
+    const blog = await Blog.findById(id);
+    if(!blog) {
+        return res.status(404).json({
+            success: false,
+            message: "Blog not found"
+        });
     }
-}
+
+    const isBlogOwner = blog.author?.toString() === req.user?._id.toString();
+
+    if(!req.isAdmin && !isBlogOwner){
+        return res.status(403).json({
+            success: false,
+            message: "Your are not authorized to modify this blog"
+        });
+    }
+
+    blog.isPublished = !blog.isPublished;
+
+    await blog.save();
+
+    res.json({
+        success: true,
+        message: "Blog status updated"
+    });
+});
 
 export const addComment = async (req, res) => {
     try {
@@ -126,3 +144,14 @@ export const generateContent = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 }
+
+export const getMyBlogs = wrapAsync(async (req,res) => {
+    const blogs = await Blog.find({
+        author: req.user._id
+    }).sort({createdAt: -1});
+
+    res.json({
+        success: true,
+        blogs
+    });
+});
